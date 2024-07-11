@@ -7,8 +7,9 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { v4 as uuidv4 } from 'uuid';
 
+import * as sharp from 'sharp';
+import { v4 as uuidv4 } from 'uuid';
 @Injectable()
 export class DmsService {
   private client: S3Client;
@@ -31,24 +32,20 @@ export class DmsService {
   }
 
   async uploadSingleFile({
-    file,
+    buffer,
+    fileName,
     isPublic = true,
   }: {
-    file: Express.Multer.File;
+    buffer: Buffer;
+    fileName: string;
     isPublic: boolean;
   }) {
     try {
-      const key = `${uuidv4()}`;
       const command = new PutObjectCommand({
         Bucket: this.bucketName,
-        Key: key,
-        Body: file.buffer,
-        ContentType: file.mimetype,
-        ACL: isPublic ? 'public-read' : 'private',
-
-        Metadata: {
-          originalName: file.originalname,
-        },
+        Key: fileName,
+        Body: buffer,
+        ContentType: 'image/webp',
       });
 
       const uploadResult = await this.client.send(command);
@@ -57,9 +54,9 @@ export class DmsService {
 
       return {
         url: isPublic
-          ? (await this.getFileUrl(key)).url
-          : (await this.getPresignedSignedUrl(key)).url,
-        key,
+          ? (await this.getFileUrl(fileName)).url
+          : (await this.getPresignedSignedUrl(fileName)).url,
+        fileName,
         isPublic,
       };
     } catch (error) {
@@ -101,5 +98,28 @@ export class DmsService {
     } catch (error) {
       throw new InternalServerErrorException(error);
     }
+  }
+
+  async processImages(files: Express.Multer.File[], isPublic = true) {
+    const processedImages = [];
+
+    for (const file of files) {
+      const filename = Date.now() + '-' + uuidv4() + '.webp';
+      const processedImage = await sharp(file.buffer)
+        .resize(1024)
+        .webp({ lossless: true })
+        .keepMetadata()
+        .toBuffer();
+
+      const result = await this.uploadSingleFile({
+        buffer: processedImage,
+        fileName: filename,
+        isPublic,
+      });
+
+      processedImages.push(result);
+    }
+
+    return processedImages;
   }
 }

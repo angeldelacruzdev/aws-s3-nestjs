@@ -8,35 +8,43 @@ import {
   Param,
   ParseFilePipe,
   Post,
-  UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
 import { DmsService } from './dms.service';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 @Controller('dms')
 export class DmsController {
   constructor(private readonly dmsService: DmsService) {}
 
   @Post('/file')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FilesInterceptor('files'))
   async uploadFile(
-    @UploadedFile(
+    @UploadedFiles(
       new ParseFilePipe({
         validators: [
           new FileTypeValidator({ fileType: '.(png|jpeg|jpg|webp)' }),
           new MaxFileSizeValidator({
-            maxSize: 5 * 1024 * 1024, // 10MB
+            maxSize: MAX_FILE_SIZE, // 10MB
             message: 'File is too large. Max file size is 10MB',
           }),
         ],
         fileIsRequired: true,
       }),
     )
-    file: Express.Multer.File,
+    @UploadedFiles()
+    files: Array<Express.Multer.File>,
     @Body('isPublic') isPublic: string,
   ) {
-    console.log(file, isPublic);
+    const isPublicBool = isPublic === 'true' ? true : false;
+
+    const resultImage = await this.dmsService.processImages(files);
+
+    console.log(resultImage, isPublicBool);
+
     return;
   }
 
